@@ -64,7 +64,7 @@ def parse_tarih_saat(metin):
 
 def hatirlatma_gonder(hat_id, numara, icerik, hedef_numara=None):
     alici = hedef_numara if hedef_numara else numara
-    mesaj_gonder(alici, "HATIRLATMA: " + icerik)
+    mesaj_gonder(alici, "⏰ HATIRLATMA: " + icerik + " ⏰")
     if hat_id in hatirlatmalar:
         del hatirlatmalar[hat_id]
 
