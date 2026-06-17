@@ -205,5 +205,5 @@ def webhook():
 
 
 if __name__ == "__main__":
-    print("Bot basladi - port 5099")
-    app.run(port=5099, debug=False)
+    print("Bot basladi")
+    app.run(host="0.0.0.0", port=10000, debug=False)
