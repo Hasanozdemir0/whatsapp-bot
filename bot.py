@@ -76,7 +76,7 @@ def hatirlatma_gonder(hat_id, numara, icerik, hedef_numara=None):
         del hatirlatmalar[hat_id]
 
 
-def komut_isle(numara, metin):
+def komut_isle(numara, metin, grup_mesaji=None):
     metin = metin.strip()
     alt = metin.lower()
 
@@ -115,7 +115,7 @@ def komut_isle(numara, metin):
     if alt.startswith("hatirla") or alt.startswith("görev"):
         parcalar = metin.split(None, 1)
         if len(parcalar) < 2:
-            return "Kullanim: hatirla 30dk gorev adi"
+            return "Kullanim: görev 30dk gorev adi"
         geri_kalan = parcalar[1].strip()
 
         hedef_numara = None
@@ -134,10 +134,14 @@ def komut_isle(numara, metin):
             icerik = ts_match.group(2).strip()
         else:
             ilk_kelime = geri_kalan.split(None, 1)
-            if len(ilk_kelime) < 2:
-                return "Gorev adi eksik. Ornek: hatirla 30dk ilac al"
-            sure_veya_saat = ilk_kelime[0]
-            icerik = ilk_kelime[1].strip()
+            if grup_mesaji and len(ilk_kelime) == 1:
+                sure_veya_saat = ilk_kelime[0]
+                icerik = grup_mesaji
+            elif len(ilk_kelime) < 2:
+                return "Gorev adi eksik. Ornek: görev 30dk ilac al"
+            else:
+                sure_veya_saat = ilk_kelime[0]
+                icerik = ilk_kelime[1].strip()
 
             if ":" in sure_veya_saat:
                 hedef_zaman = parse_saat(sure_veya_saat)
@@ -165,7 +169,7 @@ def komut_isle(numara, metin):
             hatirlatma_gonder,
             "date",
             run_date=hedef_zaman,
-            args=[hid, numara, icerik, hedef_numara],
+            args=[hid, KENDI_NUMARA, icerik, hedef_numara],
             id=hid
         )
         zaman_str = hedef_zaman.strftime("%d.%m.%Y %H:%M")
@@ -175,10 +179,8 @@ def komut_isle(numara, metin):
     if alt in ("yardim", "?", "help"):
         return (
             "Komutlar:\n"
-            "  hatirla 30dk gorev\n"
-            "  hatirla 14:30 gorev\n"
-            "  hatirla 2026-06-16 09:00 gorev\n"
-            "  hatirla 30dk gorev -> 352XXXXXXXX\n"
+            "  görev 30dk gorev\n"
+            "  görev 14:30 gorev\n"
             "  listele\n"
             "  iptal 3\n"
             "  iptal hepsi"
@@ -199,13 +201,35 @@ def webhook():
         msg_data = data.get("messageData", {})
         if msg_data.get("typeMessage", "") != "textMessage":
             return "ok"
+
         metin = msg_data["textMessageData"]["textMessage"]
-        numara = data["senderData"]["sender"].replace("@c.us", "")
-        if numara != KENDI_NUMARA:
-            return "ok"
-        yanit = komut_isle(numara, metin)
-        if yanit:
-            mesaj_gonder(numara, yanit)
+        sender = data["senderData"]["sender"]
+        numara = sender.replace("@c.us", "").replace("@g.us", "")
+        chat_id = data["senderData"].get("chatId", sender)
+
+        # Grup mesaji mi?
+        grup = "@g.us" in chat_id
+
+        if grup:
+            # Grupta sadece KENDI_NUMARA'nin yazdigi komutlara bak
+            if numara != KENDI_NUMARA:
+                return "ok"
+            # Reply var mi?
+            grup_mesaji = None
+            quoted = msg_data.get("quotedMessage", {})
+            if quoted:
+                grup_mesaji = quoted.get("textMessage", "")
+            yanit = komut_isle(numara, metin, grup_mesaji=grup_mesaji)
+            if yanit:
+                mesaj_gonder(KENDI_NUMARA, yanit)
+        else:
+            # DM - sadece KENDI_NUMARA'dan
+            if numara != KENDI_NUMARA:
+                return "ok"
+            yanit = komut_isle(numara, metin)
+            if yanit:
+                mesaj_gonder(numara, yanit)
+
     except Exception as e:
         print("Hata: " + str(e))
     return "ok"
