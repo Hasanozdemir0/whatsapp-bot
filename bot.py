@@ -69,14 +69,67 @@ def parse_tarih_saat(metin):
     return None
 
 
-def hatirlatma_gonder(hat_id, numara, icerik, hedef_numara=None):
-    alici = hedef_numara if hedef_numara else numara
-    mesaj_gonder(alici, "HATIRLATMA: " + icerik)
+def hatirlatma_gonder(hat_id, icerik):
+    mesaj_gonder(KENDI_NUMARA, "HATIRLATMA: " + icerik)
     if hat_id in hatirlatmalar:
         del hatirlatmalar[hat_id]
 
 
-def komut_isle(numara, metin, grup_mesaji=None):
+def gorev_ekle(metin, grup_mesaji=None):
+    alt = metin.lower().strip()
+    parcalar = metin.split(None, 1)
+    if len(parcalar) < 2:
+        return "Kullanim: görev 30dk"
+
+    geri_kalan = parcalar[1].strip()
+
+    hedef_zaman = None
+    ts_match = re.match(
+        r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}|\d{2}\.\d{2}\.\d{4} \d{2}:\d{2})\s+(.+)$",
+        geri_kalan
+    )
+    if ts_match:
+        hedef_zaman = parse_tarih_saat(ts_match.group(1))
+        icerik = ts_match.group(2).strip()
+    else:
+        ilk = geri_kalan.split(None, 1)
+        sure_veya_saat = ilk[0]
+        if len(ilk) >= 2:
+            icerik = ilk[1].strip()
+        elif grup_mesaji:
+            icerik = grup_mesaji
+        else:
+            return "Gorev adi eksik."
+
+        if ":" in sure_veya_saat:
+            hedef_zaman = parse_saat(sure_veya_saat)
+            if hedef_zaman is None:
+                return "Gecersiz saat."
+        else:
+            dakika = parse_sure(sure_veya_saat)
+            if dakika is None:
+                return "Sureyi anlayamadim."
+            hedef_zaman = simdi() + timedelta(minutes=dakika)
+
+    if hedef_zaman is None:
+        return "Zaman formati hatali."
+    if hedef_zaman <= simdi():
+        return "Zaman gecmiste."
+
+    sayac["n"] += 1
+    hid = str(sayac["n"])
+    hatirlatmalar[hid] = {"icerik": icerik, "zaman": hedef_zaman}
+    scheduler.add_job(
+        hatirlatma_gonder, "date",
+        run_date=hedef_zaman,
+        args=[hid, icerik],
+        id=hid
+    )
+    zaman_str = hedef_zaman.strftime("%d.%m.%Y %H:%M")
+    return "OK [" + hid + "] " + zaman_str + " - " + icerik
+
+
+def komut_isle(metin, grup_mesaji=None):
     metin = metin.strip()
     alt = metin.lower()
 
@@ -86,14 +139,13 @@ def komut_isle(numara, metin, grup_mesaji=None):
         satirlar = ["Aktif Hatirlatmalar:"]
         for hid, h in hatirlatmalar.items():
             zaman_str = h["zaman"].strftime("%d.%m.%Y %H:%M")
-            hedef = " -> " + h["hedef"] if h.get("hedef") else ""
-            satirlar.append("[" + hid + "] " + zaman_str + " - " + h["icerik"] + hedef)
+            satirlar.append("[" + hid + "] " + zaman_str + " - " + h["icerik"])
         return "\n".join(satirlar)
 
     if alt.startswith("iptal"):
         parcalar = metin.split(None, 1)
         if len(parcalar) < 2:
-            return "Kullanim: iptal 3  veya  iptal hepsi"
+            return "Kullanim: iptal 3 veya iptal hepsi"
         arg = parcalar[1].strip().lower()
         if arg == "hepsi":
             for hid in list(hatirlatmalar.keys()):
@@ -112,79 +164,11 @@ def komut_isle(numara, metin, grup_mesaji=None):
             return "[" + arg + "] silindi."
         return "[" + arg + "] bulunamadi."
 
-    if alt.startswith("hatirla") or alt.startswith("görev"):
-        parcalar = metin.split(None, 1)
-        if len(parcalar) < 2:
-            return "Kullanim: görev 30dk gorev adi"
-        geri_kalan = parcalar[1].strip()
-
-        hedef_numara = None
-        if "->" in geri_kalan:
-            bolumler = geri_kalan.split("->", 1)
-            geri_kalan = bolumler[0].strip()
-            hedef_numara = bolumler[1].strip().replace("+", "").replace(" ", "")
-
-        hedef_zaman = None
-        ts_match = re.match(
-            r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}|\d{2}\.\d{2}\.\d{4} \d{2}:\d{2})\s+(.+)$",
-            geri_kalan
-        )
-        if ts_match:
-            hedef_zaman = parse_tarih_saat(ts_match.group(1))
-            icerik = ts_match.group(2).strip()
-        else:
-            ilk_kelime = geri_kalan.split(None, 1)
-            if grup_mesaji and len(ilk_kelime) == 1:
-                sure_veya_saat = ilk_kelime[0]
-                icerik = grup_mesaji
-            elif len(ilk_kelime) < 2:
-                return "Gorev adi eksik. Ornek: görev 30dk ilac al"
-            else:
-                sure_veya_saat = ilk_kelime[0]
-                icerik = ilk_kelime[1].strip()
-
-            if ":" in sure_veya_saat:
-                hedef_zaman = parse_saat(sure_veya_saat)
-                if hedef_zaman is None:
-                    return "Gecersiz saat. Ornek: 14:30"
-            else:
-                dakika = parse_sure(sure_veya_saat)
-                if dakika is None:
-                    return "Sureyi anlayamadim. Ornek: 30dk veya 2sa"
-                hedef_zaman = simdi() + timedelta(minutes=dakika)
-
-        if hedef_zaman is None:
-            return "Zaman formati hatali."
-        if hedef_zaman <= simdi():
-            return "Belirtilen zaman gecmiste kalmis."
-
-        sayac["n"] += 1
-        hid = str(sayac["n"])
-        hatirlatmalar[hid] = {
-            "icerik": icerik,
-            "zaman": hedef_zaman,
-            "hedef": hedef_numara
-        }
-        scheduler.add_job(
-            hatirlatma_gonder,
-            "date",
-            run_date=hedef_zaman,
-            args=[hid, KENDI_NUMARA, icerik, hedef_numara],
-            id=hid
-        )
-        zaman_str = hedef_zaman.strftime("%d.%m.%Y %H:%M")
-        hedef_str = " -> " + hedef_numara if hedef_numara else ""
-        return "OK [" + hid + "] " + zaman_str + " - " + icerik + hedef_str
+    if alt.startswith("görev") or alt.startswith("hatirla"):
+        return gorev_ekle(metin, grup_mesaji)
 
     if alt in ("yardim", "?", "help"):
-        return (
-            "Komutlar:\n"
-            "  görev 30dk gorev\n"
-            "  görev 14:30 gorev\n"
-            "  listele\n"
-            "  iptal 3\n"
-            "  iptal hepsi"
-        )
+        return "Komutlar:\n  görev 30dk\n  görev 14:30\n  listele\n  iptal 3\n  iptal hepsi"
 
     return None
 
@@ -203,32 +187,34 @@ def webhook():
             return "ok"
 
         metin = msg_data["textMessageData"]["textMessage"]
-        sender = data["senderData"]["sender"]
-        numara = sender.replace("@c.us", "").replace("@g.us", "")
-        chat_id = data["senderData"].get("chatId", sender)
+        sender_data = data.get("senderData", {})
+        sender = sender_data.get("sender", "")
+        chat_id = sender_data.get("chatId", sender)
 
-        # Grup mesaji mi?
+        # Gonderenin numarasi (grup veya DM)
+        gonderenin_numarasi = sender.split("@")[0]
+
         grup = "@g.us" in chat_id
 
         if grup:
-            # Grupta sadece KENDI_NUMARA'nin yazdigi komutlara bak
-            if numara != KENDI_NUMARA:
+            # Grupta sadece bizim numaramizdan gelen komutlara bak
+            if gonderenin_numarasi != KENDI_NUMARA:
                 return "ok"
-            # Reply var mi?
             grup_mesaji = None
-            quoted = msg_data.get("quotedMessage", {})
+            quoted = msg_data.get("extendedTextMessageData", {}).get("quotedMessage", {})
+            if not quoted:
+                quoted = msg_data.get("quotedMessage", {})
             if quoted:
-                grup_mesaji = quoted.get("textMessage", "")
-            yanit = komut_isle(numara, metin, grup_mesaji=grup_mesaji)
+                grup_mesaji = quoted.get("textMessage", "") or quoted.get("conversation", "")
+            yanit = komut_isle(metin, grup_mesaji=grup_mesaji)
             if yanit:
                 mesaj_gonder(KENDI_NUMARA, yanit)
         else:
-            # DM - sadece KENDI_NUMARA'dan
-            if numara != KENDI_NUMARA:
+            if gonderenin_numarasi != KENDI_NUMARA:
                 return "ok"
-            yanit = komut_isle(numara, metin)
+            yanit = komut_isle(metin)
             if yanit:
-                mesaj_gonder(numara, yanit)
+                mesaj_gonder(KENDI_NUMARA, yanit)
 
     except Exception as e:
         print("Hata: " + str(e))
