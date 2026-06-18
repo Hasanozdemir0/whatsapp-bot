@@ -179,6 +179,7 @@ def webhook():
     if not data:
         return "ok"
     try:
+        print("DATA: " + str(data))
         tip = data.get("typeWebhook", "")
         if tip != "incomingMessageReceived":
             return "ok"
