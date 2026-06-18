@@ -2,10 +2,12 @@ from flask import Flask, request
 from apscheduler.schedulers.background import BackgroundScheduler
 import requests
 import re
+import pytz
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
-scheduler = BackgroundScheduler()
+LUX = pytz.timezone("Europe/Luxembourg")
+scheduler = BackgroundScheduler(timezone=LUX)
 scheduler.start()
 
 ID_INSTANCE = "7107654600"
@@ -16,6 +18,10 @@ BASE_URL = "https://api.green-api.com/waInstance" + ID_INSTANCE
 
 hatirlatmalar = {}
 sayac = {"n": 0}
+
+
+def simdi():
+    return datetime.now(LUX)
 
 
 def mesaj_gonder(numara, metin):
@@ -44,9 +50,9 @@ def parse_saat(metin):
     dakika = int(m.group(2))
     if not (0 <= saat <= 23 and 0 <= dakika <= 59):
         return None
-    simdi = datetime.now()
-    hedef = simdi.replace(hour=saat, minute=dakika, second=0, microsecond=0)
-    if hedef <= simdi:
+    s = simdi()
+    hedef = s.replace(hour=saat, minute=dakika, second=0, microsecond=0)
+    if hedef <= s:
         hedef += timedelta(days=1)
     return hedef
 
@@ -56,7 +62,8 @@ def parse_tarih_saat(metin):
     formatlar = ["%Y-%m-%d %H:%M", "%d.%m.%Y %H:%M", "%d/%m/%Y %H:%M"]
     for fmt in formatlar:
         try:
-            return datetime.strptime(metin, fmt)
+            dt = datetime.strptime(metin, fmt)
+            return LUX.localize(dt)
         except ValueError:
             continue
     return None
@@ -64,7 +71,7 @@ def parse_tarih_saat(metin):
 
 def hatirlatma_gonder(hat_id, numara, icerik, hedef_numara=None):
     alici = hedef_numara if hedef_numara else numara
-    mesaj_gonder(alici, "⏰ HATIRLATMA: " + icerik + " ⏰")
+    mesaj_gonder(alici, "HATIRLATMA: " + icerik)
     if hat_id in hatirlatmalar:
         del hatirlatmalar[hat_id]
 
@@ -140,11 +147,11 @@ def komut_isle(numara, metin):
                 dakika = parse_sure(sure_veya_saat)
                 if dakika is None:
                     return "Sureyi anlayamadim. Ornek: 30dk veya 2sa"
-                hedef_zaman = datetime.now() + timedelta(minutes=dakika)
+                hedef_zaman = simdi() + timedelta(minutes=dakika)
 
         if hedef_zaman is None:
             return "Zaman formati hatali."
-        if hedef_zaman <= datetime.now():
+        if hedef_zaman <= simdi():
             return "Belirtilen zaman gecmiste kalmis."
 
         sayac["n"] += 1
