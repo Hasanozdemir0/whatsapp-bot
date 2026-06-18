@@ -112,7 +112,7 @@ def komut_isle(numara, metin):
             return "[" + arg + "] silindi."
         return "[" + arg + "] bulunamadi."
 
-    if alt.startswith("hatirla"):
+    if alt.startswith("hatirla") or alt.startswith("görev"):
         parcalar = metin.split(None, 1)
         if len(parcalar) < 2:
             return "Kullanim: hatirla 30dk gorev adi"
